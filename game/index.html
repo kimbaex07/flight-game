@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sky Courier — a delivery flight game</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f7a6d'/%3E%3Ctext x='16' y='23' font-size='18' text-anchor='middle' fill='%23ffd34d' font-family='sans-serif' font-weight='bold'%3ES%3C/text%3E%3C/svg%3E">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0e1a24;
+    font-family: "Segoe UI", system-ui, sans-serif; color: #eaf4ff; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .panel { position: fixed; background: rgba(8, 22, 34, 0.72); border: 1px solid rgba(140, 210, 255, 0.45);
+    border-radius: 10px; padding: 10px 14px; backdrop-filter: blur(2px);
+    box-shadow: 0 0 18px rgba(60, 180, 255, 0.25), inset 0 0 22px rgba(60, 180, 255, 0.12); }
+  .label { font-size: 11px; letter-spacing: 2px; color: #8fd0ff; text-transform: uppercase; }
+  .value { font-size: 24px; font-weight: 700; color: #fff; text-shadow: 0 0 12px rgba(120, 220, 255, 0.9); }
+  .value.small { font-size: 18px; }
+  #instruments { top: 14px; left: 14px; display: flex; gap: 22px; align-items: center; }
+  #horizon { width: 96px; height: 96px; border-radius: 50%; border: 2px solid #8fd0ff;
+    box-shadow: 0 0 14px rgba(60, 180, 255, 0.5); background: #123; }
+  #mission { top: 14px; right: 14px; text-align: right; min-width: 210px; }
+  #mission .row { display: flex; justify-content: space-between; gap: 18px; margin-top: 4px; }
+  #mission .low { color: #ff6b5e; text-shadow: 0 0 10px rgba(255, 80, 60, 0.9); }
+  #ring { top: 14px; left: 50%; transform: translateX(-50%); font-size: 17px; font-weight: 700;
+    letter-spacing: 1px; color: #ffd34d; text-shadow: 0 0 12px rgba(255, 190, 40, 0.8); }
+  #throttle-box { left: 14px; bottom: 14px; width: 190px; }
+  .bar { height: 10px; background: rgba(255,255,255,0.15); border-radius: 5px; margin-top: 5px; overflow: hidden; }
+  .bar > div { height: 100%; background: linear-gradient(90deg, #2fae6e, #8fe388); width: 0%; }
+  #fuel-fill.low { background: linear-gradient(90deg, #c22, #f66); }
+  #msg { top: 78px; left: 50%; transform: translateX(-50%); font-size: 20px; font-weight: 700;
+    color: #ffe9a8; text-shadow: 0 0 14px rgba(255, 200, 60, 0.9); white-space: nowrap; }
+  #hint { right: 14px; bottom: 14px; font-size: 12px; line-height: 1.7; color: #bcd8ea; text-align: right; }
+  #mute { left: 14px; bottom: 96px; font-size: 12px; color: #8fd0ff; }
+  .hidden { display: none !important; }
+  .overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; background: radial-gradient(ellipse at center,
+    rgba(6, 18, 30, 0.42) 0%, rgba(6, 18, 30, 0.68) 100%); z-index: 5; }
+  #title { justify-content: flex-start; padding-top: 5vh; }
+  .overlay h1 { font-size: 64px; margin: 0; letter-spacing: 6px; color: #ffd34d;
+    text-shadow: 0 0 30px rgba(255, 190, 40, 0.7); }
+  .overlay h2 { font-size: 15px; letter-spacing: 4px; color: #8fd0ff; margin: 6px 0 22px; text-transform: uppercase; }
+  .overlay p { max-width: 620px; font-size: 16px; line-height: 1.7; color: #d6e8f5; margin: 6px 0; }
+  .overlay .keys { font-size: 14px; color: #ffe9a8; background: rgba(255, 210, 80, 0.1);
+    border: 1px solid rgba(255, 210, 80, 0.4); border-radius: 8px; padding: 10px 18px; margin-top: 14px; }
+  .overlay .start { margin-top: 24px; font-size: 20px; font-weight: 700; color: #fff;
+    animation: pulse 1.4s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+  .big { font-size: 34px; color: #ffd34d; text-shadow: 0 0 18px rgba(255, 190, 40, 0.8); }
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<canvas id="game" aria-label="Sky Courier: fly a cargo plane through delivery rings and land on the runway"></canvas>
+
+<div id="instruments" class="panel">
+  <canvas id="horizon" width="132" height="132"></canvas>
+  <div><div class="label">Altitude</div><div class="value" id="alt">0 m</div>
+       <div class="label">Vert speed</div><div class="value small" id="vs">+0 m/s</div></div>
+  <div><div class="label">Speed</div><div class="value" id="spd">0 km/h</div>
+       <div class="label">Heading</div><div class="value small" id="hdg">000°</div></div>
+  <div><div class="label">Throttle</div><div class="value" id="thr">0%</div></div>
+</div>
+
+<div id="ring" class="panel">RING 1/8</div>
+
+<div id="mission" class="panel">
+  <div class="row"><span class="label">Score</span><span class="value small" id="score">0</span></div>
+  <div class="row"><span class="label">Parcels</span><span class="value small" id="parcels">5 / 5</span></div>
+  <div class="row"><span class="label">Fuel</span><span class="value small" id="fuel">100%</span></div>
+  <div class="bar"><div id="fuel-fill"></div></div>
+  <div class="row"><span class="label">Time left</span><span class="value small" id="timer">5:00</span></div>
+</div>
+
+<div id="throttle-box" class="panel">
+  <div class="label">Throttle</div>
+  <div class="bar"><div id="thr-fill"></div></div>
+</div>
+
+<div id="msg" class="hidden"></div>
+<div id="mute" class="panel">SOUND ON (M)</div>
+<div id="hint" class="panel">W/S pitch · A/D roll · Shift/Ctrl throttle<br>Space brake · C cockpit view · drag mouse: look<br>R restart · M mute</div>
+
+<div id="title" class="overlay">
+  <h1>SKY COURIER</h1>
+  <h2>A delivery flight over Millbrook Valley</h2>
+  <p>You fly the mail plane for Millbrook Valley. Throttle up, lift off the strip,
+     and thread the eight golden rings over the river, the town and the hills.
+     Every ring is a parcel delivered — miss one and the parcel is lost.
+     Bring her home and land on the runway before the clock runs out.</p>
+  <div class="keys">W/S pitch &nbsp;·&nbsp; A/D roll &nbsp;·&nbsp; Shift / Ctrl throttle &nbsp;·&nbsp; Space brake &nbsp;·&nbsp; C cockpit &nbsp;·&nbsp; drag mouse to look</div>
+  <div class="start">PRESS ENTER OR CLICK TO FLY</div>
+</div>
+
+<div id="end" class="overlay hidden">
+  <h1 id="end-title">ROUTE COMPLETE</h1>
+  <p id="end-body"></p>
+</div>
+
+<p id="status" role="status" aria-live="polite"></p>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
